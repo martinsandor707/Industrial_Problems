@@ -1,0 +1,14 @@
+import hydrostats.ens_metrics as em
+
+# calculate the crps for the ensemble
+# ens_crps_dict is a dictionary: 'crps' the separate crps values for the ens-obs pairs
+#                          'crpsMean': the mean of the previous values
+def enscrps(dataset, save=False):
+    f= [str(i) for i in np.arange(51)]
+    ens_crps_dict = em.ens_crps(dataset['obs'].to_numpy(), dataset[f].to_numpy())
+    if save == True:
+        dfcrps = pd.DataFrame({'day': dataset['day'], 'lt': dataset['lt'], 'crps': ens_crps_dict['crps']})
+        dfcrps.to_excel("crps.xlsx")
+    return ens_crps_dict['crpsMean']
+    
+    
