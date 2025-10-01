@@ -1,12 +1,20 @@
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
+import hydrostats.ens_metrics as em
+import torch
+import math
 
 
 def read_stdata(data_path):
     with open(data_path, 'rb') as file:
         datast = pickle.load(file)
     datast.columns = [ 'day',   'lt',  'obs', 'hres'] + [ str(i) for i in np.arange(51)]
+    return datast
+
+def read_stdata2(data_path):
+    with open(data_path, 'rb') as file:
+        datast = pickle.load(file)
     return datast
 
 
@@ -88,8 +96,8 @@ def crps_loss(y_true, y_pred):
     """
     # print(type(y_true), type(y_pred[:,0]))
     y_true = torch.squeeze(y_true)
-    loc = torch.squeeze(torch.tensor(y_pred[:, 0], dtype=torch.float32))
-    sd = torch.squeeze(torch.tensor(y_pred[:, 1], dtype=torch.float32))
+    loc = y_pred[:, 0]
+    sd  = y_pred[:, 1]
 
     # Standard normal distribution
     dist = torch.distributions.Normal(0.0, 1.0)

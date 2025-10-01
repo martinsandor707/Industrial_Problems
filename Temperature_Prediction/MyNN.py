@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
+import torch.nn.functional as F
 
 class TemperatureRegressor(nn.Module):
     def __init__(self, input_size, hidden_size):
@@ -148,7 +148,7 @@ class EnsembleTemperatureForecastNN(nn.Module):
         # Convert log_std to std with minimum bound
         std = torch.exp(log_std) + self.min_std
         
-        return mean, std
+        return torch.cat([mean, std], dim=1)
     
     def predict_distribution(self, x):
         """

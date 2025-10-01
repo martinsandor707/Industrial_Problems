@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error
 from helper import read_stdata, read_stdata2, my_train_test_split, crps_loss, calculate_crps
-from MyNN import ProbabilisticRegressor, EarlyStopping
+from MyNN import ProbabilisticRegressor, EarlyStopping, EnsembleTemperatureForecastNN
 import torch.nn as nn
 import torch.optim
 
@@ -36,9 +36,9 @@ test_m1 = pd.DataFrame({'day': test_1['day'], 'lt': test_1['lt'], 'hres': test_1
                          'obs': test_1['obs']
                          })
 
-print(train_m1)
-print(train_m1.columns)
-model = ProbabilisticRegressor(5, 126)
+# print(train_m1)
+# print(train_m1.columns)
+model = EnsembleTemperatureForecastNN(5, [16])
 
 inputs = torch.tensor(train_m1.iloc[:,2:-1].values, dtype=torch.float32)
 targets =  torch.tensor(train_m1['obs'], dtype=torch.float32)
@@ -46,7 +46,8 @@ targets =  torch.tensor(train_m1['obs'], dtype=torch.float32)
 validation_inputs = torch.tensor(train_m1.iloc[:,2:-1].values, dtype=torch.float32)
 validation_targets =  torch.tensor(train_m1['obs'], dtype=torch.float32)
 
-mean_pred, std_pred = model(inputs)
+output = model(inputs)
+print(f"the output shape is {output.size()} \n{output}")
 # print(mean_pred.shape, std_pred.shape)
 
 
@@ -61,8 +62,8 @@ for epoch in range(epoch_number):
 
     # Forward pass
     outputs = model(inputs)
-    print(np.array(outputs).shape)
-    print(type(targets), type(outputs))
+    # print(np.array(outputs).shape)
+    # print(type(targets), type(outputs))
     loss = crps_loss(targets, outputs)
 
     # Backward pass and optimization
@@ -91,3 +92,27 @@ for epoch in range(epoch_number):
 
 # restore best weights
 model.load_state_dict(torch.load("best_model.pt"))
+
+import matplotlib.pyplot as plt
+
+# preds is assumed to be of shape (N, 2): [mean, std]
+preds_np = preds.detach().cpu().numpy()
+mean_pred = preds_np[:30, 0]
+std_pred = preds_np[:30, 1]
+validation_targets_np = validation_targets.detach().cpu().numpy()[:30]
+# Calculate quartiles assuming normal distribution
+q1 = mean_pred + std_pred * torch.distributions.Normal(0, 1).icdf(torch.tensor(0.25)).item()
+q3 = mean_pred + std_pred * torch.distributions.Normal(0, 1).icdf(torch.tensor(0.75)).item()
+
+x = range(len(mean_pred))
+
+plt.figure(figsize=(12, 6))
+plt.plot(x, mean_pred, label='Predicted Mean')
+plt.plot(x, validation_targets_np, '--', color="red", label='True Values')
+plt.fill_between(x, q1, q3, color='skyblue', alpha=0.4, label='Interquartile Range (Q1-Q3)')
+plt.xlabel('Sample')
+plt.ylabel('Temperature')
+plt.title('Predicted Mean and Interquartile Range')
+plt.legend()
+plt.savefig("predicted_mean_iqr.png")
+plt.show()
