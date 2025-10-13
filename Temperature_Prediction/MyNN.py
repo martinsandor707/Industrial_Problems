@@ -73,20 +73,29 @@ class TwoInputNet(nn.Module):
         return out
     
 class ProbabilisticRegressor(nn.Module):
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, input_size, hidden_size=128, num_layers=2):
         super().__init__()
-        self.fc = nn.Linear(input_size, hidden_size)
-        self.activation = nn.Tanh()
+
+        layers = []
+
+        dims = [input_size] + [hidden_size] * num_layers
+        for i in range(len(dims) - 1):
+            layers.append(nn.Linear(dims[i], dims[i+1]))
+            layers.append(nn.Tanh())
+
+        self.hidden = nn.Sequential(*layers)
+        
+        # Separate output heads for mean and log-std
         self.mean_head = nn.Linear(hidden_size, 1)
         self.std_head = nn.Linear(hidden_size, 1)
 
     def forward(self, x):
-        h = self.activation(self.fc(x))
-
-        mean = self.mean_head(h)  # linear output
-        std = F.softplus(self.std_head(h))  # strictly positive
-
-        return [mean, std]
+        h = self.hidden(x)
+        
+        mean = self.mean_head(h)
+        std = F.softplus(self.std_head(h)) + 1e-6  # ensure strictly positive
+        
+        return torch.cat([mean,std], dim=1)
     
 
 ##### Claude's version of ProbabilisticRegressor #####

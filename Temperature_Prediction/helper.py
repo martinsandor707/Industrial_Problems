@@ -2,8 +2,10 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import hydrostats.ens_metrics as em
+import pandas as pd
 import torch
 import math
+from scipy.stats import norm
 
 
 def read_stdata(data_path):
@@ -66,7 +68,7 @@ def calculate_crps(dataset, save=False):
         dfcrps = pd.DataFrame({'day': dataset['day'], 'lt': dataset['lt'], 'crps': crps['crps']})
         dfcrps.to_excel("crps.xlsx")
 
-    return crps['crpsMean']
+    return crps
 
 def crps_lossS(y_true, y_pred):
     """
@@ -110,3 +112,57 @@ def crps_loss(y_true, y_pred):
     part3 = 1.0 / math.sqrt(math.pi)
 
     return torch.mean(sd * (part1 + part2 - part3))
+
+def coverage_ens_nominal(data):
+    f = [str(i) for i in range(51)]
+    lower_bound = np.min(data[f])
+    upper_bound = np.max(data[f])
+
+    c = np.where(np.less(lower_bound, data['obs']) & np.less(data['obs'], upper_bound), 1, 0)
+
+    df = pd.DataFrame({'day': data['day'], 'lt':data['lt'], 'c':c, 'width': upper_bound-lower_bound})
+    ltcov = []
+    width = []
+
+    for lt in range(1,21):
+        df2 = df[df['lt'] == lt]
+        ltcov.append((np.mean(df2['c'], axis=0)))
+        width.append((np.mean(df2['width'], axis=0)))
+
+    return ltcov, width
+
+def coverage_ens(data, alpha):
+    f = [str(i) for i in range(51)]
+    lower_bound = np.quantile(data[f], alpha/2)
+    upper_bound = np.quantile(data[f], 1-alpha/2)
+
+    c = np.where(np.less(lower_bound, data['obs']) & np.less(data['obs'], upper_bound), 1, 0)
+
+    df = pd.DataFrame({'day': data['day'], 'lt':data['lt'], 'c':c, 'width': upper_bound-lower_bound})
+    ltcov = []
+    width = []
+
+    for lt in range(1,21):
+        df2 = df[df['lt'] == lt]
+        ltcov.append((np.mean(df2['c'], axis=0)))
+        width.append((np.mean(df2['width'], axis=0)))
+
+    return ltcov, width
+
+def coverage_pred(pred, obs, alpha):
+    lower = norm.ppf(alpha / 2, loc=pred[:,0], scale=pred[:,1]) # scipy.stats.norm.ppf
+    upper = norm.ppf(1 - alpha / 2, loc=pred[:,0], scale=pred[:,1])
+
+    # print(f"Obs shape: {obs['obs'].shape}\t Upper: {upper.shape}\t Lower: {lower.shape}\n{upper}\nPred: {pred}")
+    c = np.where(np.less(lower, obs['obs']) & np.less(obs['obs'], upper), 1, 0)
+
+    df = pd.DataFrame({'day': obs['day'], 'lt': obs['lt'], 'c': c, 'width': upper - lower})
+    ltcov = []
+    width = []
+
+    for lt in range(1, 21):
+        df2 = df[df['lt'] == lt]
+        ltcov.append((np.mean(df2['c'], axis=0)))
+        width.append((np.mean(df2['width'], axis=0)))
+
+    return ltcov, width

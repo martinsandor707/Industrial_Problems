@@ -1,0 +1,15 @@
+Features used: 51 member ensemble predictions normalized from Kelvin to Celsius
+Layers:
+    - Linear (128 neurons)
+    - ReLU
+    - Dropout (0.2 dropout rate)
+
+Note: Instead of using a softplus function on the standard deviation head, I predicted log(std) instead, and calculated exp(log(std)) + 0.000001 (to avoid dividing by 0). Granted, I took this idea from an LLM, but in practice it yielded better results than using the softplus function, so I ended up keeping it
+
+CRPS loss at the end:
+- val_loss = 1.1494     
+- test_loss = 1.3150
+
+With a train-validation-test split of 25-25-50%
+Learning rate: 1e-3 with Adam optimizer
+Early stopping patience: 50 Epochs
