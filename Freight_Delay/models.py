@@ -29,3 +29,28 @@ class BinaryClassifier(nn.Module):
         x = self.dropout(x)
         x = torch.sigmoid(self.fc3(x))  # binary output between 0–1
         return x
+
+
+class EarlyStopping:
+    def __init__(self, patience=5, delta=0.0, path="checkpoint.pt"):
+        """
+        patience: how many epochs to wait without improvement
+        delta: minimum change in validation loss to be considered improvement
+        path: file to save the best model
+        """
+        self.patience = patience
+        self.delta = delta
+        self.counter = 0
+        self.best_loss = float("inf")
+        self.early_stop = False
+        self.path = path
+
+    def __call__(self, val_loss, model):
+        if val_loss < self.best_loss - self.delta:
+            self.best_loss = val_loss
+            self.counter = 0
+            torch.save(model.state_dict(), self.path)  # save best model
+        else:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
