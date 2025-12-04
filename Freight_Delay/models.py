@@ -28,7 +28,6 @@ class BinaryClassifier(nn.Module):
         x = F.relu(self.bn2(self.fc2(x)))
         x = self.dropout(x)
         x = self.fc3(x)
-        # x = torch.sigmoid(self.fc3(x))  # binary output between 0–1
         return x
 
 

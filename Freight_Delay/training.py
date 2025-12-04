@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import StandardScaler
 import torch.optim.lr_scheduler as lr_scheduler
@@ -13,6 +13,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import roc_curve, roc_auc_score
 import matplotlib.pyplot as plt
 
+
+import xgboost as xgb
 from models import BinaryClassifier, EarlyStopping
 import helper
 
@@ -35,11 +37,11 @@ print(y.columns)
 
 
 # Example setup
-method_to_use = "PytorchBinaryClassifier"
+method_to_use = "XGBoostClassifier"
 
 
-# Best accuracy so far: 0.769
-#                  AUC: 0.699
+# Best accuracy so far: 0.772
+#                  AUC: 0.713
 if method_to_use == "PytorchBinaryClassifier":
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -47,7 +49,7 @@ if method_to_use == "PytorchBinaryClassifier":
     batch_size = 64
 
     # 50-25-25 train-validation-test split
-    x_train, x_test, y_train, y_test             = train_test_split(x, y, test_size=0.25, random_state=42)
+    x_train, x_test, y_train, y_test             = train_test_split(x, y, test_size=0.2, random_state=42)
     x_train, x_validation, y_train, y_validation = train_test_split(x_train, y_train, test_size=0.33, random_state=42)
 
     x_train         = scaler.fit_transform(x_train)
@@ -82,7 +84,7 @@ if method_to_use == "PytorchBinaryClassifier":
     criterion       = nn.BCEWithLogitsLoss()  # Binary Cross Entropy
     optimizer       = torch.optim.Adam(model.parameters(), lr=1e-3)
     scheduler       = lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)
-    early_stopping  = EarlyStopping(patience=10, path="best_model.pt")
+    early_stopping  = EarlyStopping(patience=5, path="best_model.pt")
 
     # Storage for plotting
     train_losses = []
@@ -141,6 +143,17 @@ if method_to_use == "PytorchBinaryClassifier":
                         f"Val loss={epoch_val_loss:.4f}   "
                         f"Val acc={val_acc:.4f}")
         
+            running_test_loss = 0.0
+            for xb, yb in test_dataloader:
+                xb = xb.to(device)
+                yb = yb.to(device)
+                test_outputs = model(xb)
+                test_loss    = criterion(test_outputs, yb)
+
+                running_test_loss += test_loss.item()
+            epoch_test_loss = running_test_loss / len(test_dataloader.dataset)
+            test_losses.append(epoch_test_loss)
+
         ########## EARLY STOPPING CHECK ##########
         early_stopping(epoch_val_loss, model)
         if early_stopping.early_stop:
@@ -204,7 +217,7 @@ if method_to_use == "PytorchBinaryClassifier":
     plt.title("ROC Curve")
     plt.legend()
     plt.grid(True)
-    plt.savefig("roc_curve_nn.png")
+    plt.savefig("charts/roc_curve_nn.png")
 
     # -----------------------------------------------------------
     # PLOT TRAIN / VAL / TEST LOSSES
@@ -214,16 +227,16 @@ if method_to_use == "PytorchBinaryClassifier":
 
     plt.plot(epochs_range, train_losses, label="Train Loss")
     plt.plot(epochs_range, val_losses, label="Validation Loss")
-
+    plt.plot(epochs_range, test_losses, label="Test Loss")
     # The test loss is only one number — plot as horizontal line
-    plt.axhline(test_loss, color='red', linestyle='--', label="Test Loss")
+    # plt.axhline(test_loss, color='red', linestyle='--', label="Test Loss")
 
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.title("Training, Validation, and Test Loss")
     plt.legend()
     plt.grid(True)
-    plt.savefig("loss_curves.png")
+    plt.savefig("charts/loss_curves.png")
 
 # Best accuracy so far: 0.786 with n_estimators=300, max_depth=None, max_features=0.1, max_samples=0.8
 #                  AUC: 0.783
@@ -324,5 +337,64 @@ elif method_to_use == "RandomForestClassifier":
     plt.title(f"ROC Curve for Best Random Forest Model")
     plt.legend()
     plt.grid(True)
-    plt.savefig("roc_curve_random_forest.png")
+    plt.savefig("charts/roc_curve_random_forest.png")
     plt.show()
+
+
+# Best accuracy so far: 0.789 
+#                  AUC: 0.803
+# Params:
+# {'colsample_bytree': 0.8, 'gamma': 0.1, 'learning_rate': 0.1, 'max_depth': 3, 'min_child_weight': 1, 'n_estimators': 200, 'subsample': 1.0}
+elif method_to_use == "XGBoostClassifier":
+
+    X_train, X_test, y_train, y_test = train_test_split(x,y, test_size=0.2, random_state=42)
+    
+    param_grid = {
+        'n_estimators': [100, 200, 300],
+        'max_depth': [3, 5, 7],
+        'learning_rate': [0.01, 0.1, 0.2],
+        'subsample': [0.8, 1.0],
+        'colsample_bytree': [0.8, 1.0],
+        'gamma': [0, 0.1, 0.2],
+        'min_child_weight': [1, 3, 5]
+    }
+
+    xgb_clf = xgb.XGBClassifier(random_state=42)
+
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+    grid_search = GridSearchCV(
+        estimator=xgb_clf,
+        param_grid=param_grid,
+        cv=cv,
+        scoring='accuracy',    # or another metric
+        n_jobs=-1,
+        verbose=1
+    )
+
+    grid_search.fit(X_train, y_train)
+
+    print("Best params:", grid_search.best_params_)
+    print("Best average accuracy:", grid_search.best_score_)
+
+    final_model = grid_search.best_estimator_
+
+    final_model.fit(X_train, y_train)
+    y_prob = final_model.predict_proba(X_test)[:, 1]  # probability of positive class
+
+    # Compute ROC curve and AUC
+    fpr, tpr, thresholds = roc_curve(y_test, y_prob)
+    auc_score = roc_auc_score(y_test, y_prob)
+
+    print(f"AUC: {auc_score:.4f}")
+
+    # Plot ROC curve
+    plt.figure(figsize=(6, 5))
+    plt.plot(fpr, tpr, label=f"ROC Curve (AUC = {auc_score:.3f})")
+    plt.plot([0, 1], [0, 1], 'k--', label="Random guess")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title(f"ROC Curve for Best XGBoost Model")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("charts/roc_curve_xgb.png")

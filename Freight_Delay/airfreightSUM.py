@@ -221,7 +221,6 @@ def predict_the_delay(data,obs,type,bagging=False):
     print(data)
     datasimp = create_data(data,type)
 
-    return
     trainset = datasimp.iloc[:2627,:]
     testset = datasimp.iloc[2627:,:]
     obs2 = obs['delay']
